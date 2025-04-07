@@ -246,19 +246,16 @@ if uploaded_file is not None:
 
         # 7) Calendar View of Recommended Removal Dates
         st.subheader("Calendar View of Recommended Removal Dates")
-        start_date = easter_date - pd.Timedelta(days=30)
-        end_date = easter_date + pd.Timedelta(days=30)
 
-        # Debug lines to see what's in start_date / end_date
-        st.write("DEBUG: start_date type:", type(start_date), "value:", start_date)
-        st.write("DEBUG: end_date type:", type(end_date), "value:", end_date)
+        # Define calendar range
+        start_date = pd.to_datetime(easter_date) - pd.to_timedelta(30, unit='D')
+        end_date = pd.to_datetime(easter_date) + pd.to_timedelta(30, unit='D')
 
+        # Prepare the data for plotting
         timeline_df = avg_dbe[['Bulb Type', 'Recommended Removal Date']].dropna()
         timeline_df['Recommended Removal Date'] = pd.to_datetime(timeline_df['Recommended Removal Date'])
 
-        # Another debug line
-        st.write("DEBUG: timeline_df head:", timeline_df.head())
-
+        # Create calendar scatter plot
         fig_calendar = px.scatter(
             timeline_df,
             x="Recommended Removal Date",
@@ -266,6 +263,8 @@ if uploaded_file is not None:
             title="Recommended Removal Dates Calendar View",
             labels={"Recommended Removal Date": "Date", "Bulb Type": "Bulb Type"}
         )
+
+        # Mark Easter date on calendar
         fig_calendar.add_vline(
             x=easter_date,
             line_width=2,
@@ -274,9 +273,14 @@ if uploaded_file is not None:
             annotation_text="Easter",
             annotation_position="top right"
         )
-        fig_calendar.update_xaxes(range=[start_date, end_date], dtick="D1")
-        st.plotly_chart(fig_calendar)
 
+        # Limit calendar view range
+        fig_calendar.update_xaxes(
+            range=[pd.to_datetime(start_date), pd.to_datetime(end_date)],
+            dtick="D1"
+        )
+
+        st.plotly_chart(fig_calendar)
         # 8) Historical Trends by Bulb Type
         st.subheader("Historical Trends by Bulb Type")
         bulb_types = sorted(df_all["Bulb Type"].dropna().unique())
