@@ -9,18 +9,18 @@ st.title("Easter Bulb Removal Model Dashboard")
 
 st.markdown("""
 This dashboard lets you:
-- Upload your **Easter Rules Template_Bulb Removal Model(PM).xlsx** file containing historical data for 2023, 2024, and 2025.
-- Upload historical weather CSV files (Feb 1–Apr 30, 2013–2024) for New Ringgold, PA.
-- View summary insights, visualize relationships, and get recommended removal dates.
-- Use weather data (e.g., cumulative GDD) to inform predictive analysis.
+- Upload your **Easter Rules Template_Bulb Removal Model(PM).xlsx** file containing historical data (2023–2025) for bulb removal.
+- Automatically load historical weather data from a combined CSV file (stored in the repo root).
+- Visualize KPIs, regression models, and trends.
+- **Select a future Easter year** to see recommended removal dates and predicted average temperatures.
 """)
 
-# ===============================
-# 1. Bulb Removal Data Section
-# ===============================
+# ==========================================================
+# 1. Bulb Removal Data Integration (Excel)
+# ==========================================================
 uploaded_excel = st.file_uploader("Upload Bulb Removal Excel File", type=["xlsx"])
 
-# --- Function to compute Easter date ---
+# --- Function to compute Easter date using the Anonymous Gregorian algorithm ---
 def compute_easter(year):
     a = year % 19
     b = year // 100
@@ -64,7 +64,7 @@ def load_year_data(xls, sheet_name, year):
     })
     return df
 
-# Define keywords to exclude rows that aren’t relevant
+# Define keywords to exclude rows (e.g., freeform notes)
 exclude_keywords = ["additional notes", "florel", "bonzi"]
 
 if uploaded_excel is not None:
@@ -78,17 +78,21 @@ if uploaded_excel is not None:
         st.subheader("Combined Historical Bulb Removal Data")
         st.dataframe(df_all)
         
+        # Convert 'Removal Date' to datetime
         df_all['Removal Date'] = pd.to_datetime(df_all['Removal Date'], errors='coerce')
+        # Filter out rows with unwanted bulb type info
         df_all_filtered = df_all[~df_all["Bulb Type"].str.contains("|".join(exclude_keywords), case=False, na=False)]
         
+        # KPIs & Charts
         st.subheader("KPIs for DBE (Filtered)")
         num_years = df_all_filtered["Year"].nunique()
         overall_avg_dbe = df_all_filtered["DBE"].mean()
         st.markdown(f"**Total Years:** {num_years}  |  **Overall Average DBE:** {overall_avg_dbe:.1f} days")
         
         summary_filtered = df_all_filtered.groupby('Bulb Type').agg({'DBE': 'mean'}).reset_index()
-        st.subheader("Average DBE by Bulb Type (Filtered)")
-        fig1 = px.bar(summary_filtered, x="Bulb Type", y="DBE", title="Avg DBE by Bulb Type")
+        st.subheader("Average DBE by Bulb Type")
+        fig1 = px.bar(summary_filtered, x="Bulb Type", y="DBE",
+                      title="Avg DBE by Bulb Type (Filtered)")
         st.plotly_chart(fig1)
         
         st.subheader("DBE vs. Average Temperature (Filter by Year)")
@@ -100,12 +104,12 @@ if uploaded_excel is not None:
         else:
             df_filtered = df_all
         fig2 = px.scatter(df_filtered, x="DBE", y="Avg Temp (°F)", color="Bulb Type",
-                          hover_data=["Year", "Removal Date"], title="DBE vs. Avg Temp")
+                          hover_data=["Year", "Removal Date"],
+                          title="DBE vs. Avg Temp")
         st.plotly_chart(fig2)
         
         st.subheader("Regression Model: Predicting Avg Temp from DBE")
         model_choice = st.selectbox("Select Regression Model Type", options=["Overall", "By Year"])
-        
         model = None
         model_year = None
         
@@ -127,7 +131,8 @@ if uploaded_excel is not None:
                 
                 df_model['Predicted Avg Temp (°F)'] = model.predict(X)
                 fig3 = px.scatter(df_model, x="DBE", y="Avg Temp (°F)", color="Bulb Type",
-                                  hover_data=["Year", "Removal Date"], title="Regression Fit")
+                                  hover_data=["Year", "Removal Date"],
+                                  title="Regression Fit (Overall)")
                 fig3.add_scatter(x=df_model['DBE'], y=df_model['Predicted Avg Temp (°F)'],
                                  mode='lines', name="Regression Line")
                 st.plotly_chart(fig3)
@@ -160,12 +165,41 @@ if uploaded_excel is not None:
             else:
                 st.info(f"Not enough data for regression in {selected_reg_year}.")
         
+        # ===================================================
+        # 2. Historical Weather Data Integration (CSV)
+        # ===================================================
+        st.subheader("Historical Weather Data Integration")
+        try:
+            # Assuming the combined CSV is in the repository root
+            weather_csv_path = "Combined Weather Data.csv"
+            df_weather = pd.read_csv(weather_csv_path)
+            if "datetime" in df_weather.columns:
+                df_weather["datetime"] = pd.to_datetime(df_weather["datetime"], errors="coerce")
+            st.write("### Weather Data Preview")
+            st.dataframe(df_weather.head(20))
+            
+            # Calculate Growing Degree Days (GDD) with base 40°F if 'TAVG' exists
+            base_temp = 40
+            if "TAVG" in df_weather.columns:
+                df_weather["GDD"] = df_weather["TAVG"].apply(lambda t: max(t - base_temp, 0))
+                st.write("### Weather Data with GDD Calculation")
+                st.dataframe(df_weather[["datetime", "TAVG", "GDD"]].head(20))
+            else:
+                st.info("No 'TAVG' column found in the weather data.")
+        except Exception as e:
+            st.error(f"Error loading weather data: {e}")
+        
+        # ===================================================
+        # 3. Recommended Removal Dates & Future Predictions
+        # ===================================================
         st.subheader("Recommended Removal Dates Based on Easter")
-        easter_year_input = st.number_input("Select Easter Year", value=2024, step=1)
+        # Number input to allow future prediction even if not in historical data
+        easter_year_input = st.number_input("Select Easter Year (can be future)", value=2024, step=1)
         computed_easter = compute_easter(int(easter_year_input))
         easter_date = pd.to_datetime(computed_easter)
         st.write("Computed Easter Date:", easter_date.strftime("%Y-%m-%d"))
         
+        # Calculate historical average DBE per Bulb Type using filtered bulb data
         avg_dbe = df_all_filtered.groupby("Bulb Type")["DBE"].mean().reset_index().rename(columns={"DBE": "Avg DBE"})
         avg_dbe["Avg DBE"] = pd.to_numeric(avg_dbe["Avg DBE"], errors='coerce')
         
@@ -180,6 +214,7 @@ if uploaded_excel is not None:
         
         avg_dbe["Recommended Removal Date"] = avg_dbe["Avg DBE"].apply(lambda dbe: safe_removal_date(dbe, easter_date))
         
+        # Predict average temperature on removal day using the regression model
         if model_choice == "Overall" and model is not None:
             avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(
                 lambda dbe: model.intercept_ + model.coef_[0] * dbe if pd.notnull(dbe) else pd.NA
@@ -191,18 +226,24 @@ if uploaded_excel is not None:
         else:
             avg_dbe["Predicted Avg Temp (°F)"] = pd.NA
         
-        st.write("### Recommended Removal Dates and Expected Temperature")
+        st.write("### Recommended Removal Dates and Predicted Average Temperature")
         st.dataframe(avg_dbe)
         
         st.markdown("""
         **Explanation:**
-        - For each bulb type, the app calculates the historical average DBE (Days Before Easter).
-        - The recommended removal date is computed by subtracting the average DBE from the computed Easter date.
-        - The regression model predicts the expected average temperature on that removal day.
+        - For each bulb type (filtered for valid entries), the app computes the historical average DBE (Days Before Easter).
+        - The recommended removal date is derived by subtracting that average DBE from the computed Easter date.
+        - The regression model (Overall or By Year) is used to predict the expected average temperature on the removal day.
+        - This section supports future predictions (e.g., for years beyond your historical data).
         """)
         
+        # ===================================================
+        # 4. Visualizing Removal Timing (Days From Easter)
+        # ===================================================
         st.subheader("Recommended Removal Timing (Days From Easter)")
         avg_dbe["Days From Easter"] = (avg_dbe["Recommended Removal Date"] - easter_date).dt.days
+        
+        # Scatter plot version
         fig_offset = px.scatter(
             avg_dbe,
             x="Days From Easter",
@@ -215,6 +256,7 @@ if uploaded_excel is not None:
                              annotation_text="Easter", annotation_position="top right")
         st.plotly_chart(fig_offset)
         
+        # Horizontal bar chart version
         st.subheader("Removal Timing by Bulb Type (Horizontal Bar)")
         fig_bars = px.bar(
             avg_dbe,
@@ -229,6 +271,9 @@ if uploaded_excel is not None:
                            annotation_text="Easter", annotation_position="top right")
         st.plotly_chart(fig_bars)
         
+        # ===================================================
+        # 5. Historical Trends by Bulb Type
+        # ===================================================
         st.subheader("Historical Trends by Bulb Type")
         bulb_types = sorted(df_all["Bulb Type"].dropna().unique())
         selected_bulb = st.selectbox("Select Bulb Type", options=bulb_types)
@@ -253,43 +298,4 @@ if uploaded_excel is not None:
     except Exception as e:
         st.error(f"Error processing file: {e}")
 else:
-    st.info("Please upload your Excel file to begin.")
-
-# =======================================
-# 2. Historical Weather Data Integration
-# =======================================
-st.subheader("Historical Weather Data Integration")
-uploaded_weather_files = st.file_uploader(
-    "Upload weather CSV files (Feb 1 - Apr 30, 2013-2024)",
-    type=["csv"],
-    accept_multiple_files=True, key="weather"
-)
-
-if uploaded_weather_files:
-    weather_dfs = []
-    for wf in uploaded_weather_files:
-        df_w = pd.read_csv(wf)
-        # Assume the CSV has a DATE column; adjust if needed
-        if "DATE" in df_w.columns:
-            df_w["DATE"] = pd.to_datetime(df_w["DATE"], errors="coerce")
-        else:
-            st.warning("One of the CSV files does not contain a 'DATE' column.")
-        weather_dfs.append(df_w)
-    df_weather = pd.concat(weather_dfs, ignore_index=True)
-    st.write("### Combined Weather Data")
-    st.dataframe(df_weather.head(20))
-    
-    # Calculate Growing Degree Days (GDD) using a base of 40°F if 'TAVG' is present
-    base_temp = 40
-    if "TAVG" in df_weather.columns:
-        df_weather["GDD"] = df_weather["TAVG"].apply(lambda t: max(t - base_temp, 0))
-        st.write("### Weather Data with GDD Calculation")
-        st.dataframe(df_weather[["DATE", "TAVG", "GDD"]].head(20))
-    else:
-        st.info("No 'TAVG' column found in weather data.")
-    
-    # OPTIONAL: You can further merge df_weather with your bulb removal data on date fields,
-    # for instance:
-    # merged_df = pd.merge(df_all, df_weather, left_on="Removal Date", right_on="DATE", how="left")
-else:
-    st.info("Please upload at least one weather CSV file to begin.")
+    st.info("Please upload your Bulb Removal Excel file to begin.")
