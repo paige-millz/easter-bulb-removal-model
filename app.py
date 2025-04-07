@@ -245,42 +245,42 @@ if uploaded_file is not None:
         """)
 
         # 7) Calendar View of Recommended Removal Dates
-        st.subheader("Calendar View of Recommended Removal Dates")
+       st.subheader("Calendar View of Recommended Removal Dates")
 
-        # Define calendar range
-        start_date = pd.to_datetime(easter_date) - pd.to_timedelta(30, unit='D')
-        end_date = pd.to_datetime(easter_date) + pd.to_timedelta(30, unit='D')
+        try:
+            # Define calendar range
+            start_date = pd.to_datetime(easter_date) - pd.Timedelta(days=30)
+            end_date = pd.to_datetime(easter_date) + pd.Timedelta(days=30)
 
-        # Prepare the data for plotting
-        timeline_df = avg_dbe[['Bulb Type', 'Recommended Removal Date']].dropna()
-        timeline_df['Recommended Removal Date'] = pd.to_datetime(timeline_df['Recommended Removal Date'])
+            # Prepare the data
+            timeline_df = avg_dbe[['Bulb Type', 'Recommended Removal Date']].dropna()
+            timeline_df['Recommended Removal Date'] = pd.to_datetime(timeline_df['Recommended Removal Date'])
 
-        # Create calendar scatter plot
-        fig_calendar = px.scatter(
-            timeline_df,
-            x="Recommended Removal Date",
-            y="Bulb Type",
-            title="Recommended Removal Dates Calendar View",
-            labels={"Recommended Removal Date": "Date", "Bulb Type": "Bulb Type"}
-        )
+            if timeline_df.empty:
+                st.warning("No recommended removal dates available to display on calendar.")
+            else:
+                fig_calendar = px.scatter(
+                    timeline_df,
+                    x="Recommended Removal Date",
+                    y="Bulb Type",
+                    title="Recommended Removal Dates Calendar View",
+                    labels={"Recommended Removal Date": "Date", "Bulb Type": "Bulb Type"}
+                )
 
-        # Mark Easter date on calendar
-        fig_calendar.add_vline(
-            x=easter_date,
-            line_width=2,
-            line_dash="dash",
-            line_color="red",
-            annotation_text="Easter",
-            annotation_position="top right"
-        )
+                fig_calendar.add_vline(
+                    x=easter_date,
+                    line_width=2,
+                    line_dash="dash",
+                    line_color="red",
+                    annotation_text="Easter",
+                    annotation_position="top right"
+                )
 
-        # Limit calendar view range
-        fig_calendar.update_xaxes(
-            range=[pd.to_datetime(start_date), pd.to_datetime(end_date)],
-            dtick="D1"
-        )
+                fig_calendar.update_xaxes(range=[start_date, end_date])
+                st.plotly_chart(fig_calendar)
 
-        st.plotly_chart(fig_calendar)
+        except Exception as e:
+            st.error(f"Error processing calendar view: {e}")
         # 8) Historical Trends by Bulb Type
         st.subheader("Historical Trends by Bulb Type")
         bulb_types = sorted(df_all["Bulb Type"].dropna().unique())
