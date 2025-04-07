@@ -78,7 +78,7 @@ if uploaded_file is not None:
         # Convert 'Removal Date' to datetime
         df_all['Removal Date'] = pd.to_datetime(df_all['Removal Date'], errors='coerce')
 
-        # 2) Exclude unwanted notes
+        # 2) Exclude unwanted rows based on Bulb Type notes
         df_all_filtered = df_all[~df_all["Bulb Type"].str.contains("|".join(exclude_keywords), case=False, na=False)]
 
         # 3) KPIs and Average DBE Chart
@@ -223,11 +223,11 @@ if uploaded_file is not None:
         avg_dbe["Recommended Removal Date"] = avg_dbe["Avg DBE"].apply(lambda dbe: safe_removal_date(dbe, easter_date))
 
         # Predict temperature using the chosen regression model
-        if model_choice == "Overall" and 'model' in locals() and model is not None:
+        if model_choice == "Overall" and model is not None:
             avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(
                 lambda dbe: (model.intercept_ + model.coef_[0] * dbe) if pd.notnull(dbe) else pd.NA
             )
-        elif model_choice == "By Year" and 'model_year' in locals() and model_year is not None:
+        elif model_choice == "By Year" and model_year is not None:
             avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(
                 lambda dbe: (model_year.intercept_ + model_year.coef_[0] * dbe) if pd.notnull(dbe) else pd.NA
             )
@@ -249,14 +249,11 @@ if uploaded_file is not None:
         start_date = easter_date - pd.Timedelta(days=30)
         end_date = easter_date + pd.Timedelta(days=30)
 
-        # Debug lines to see what's in start_date / end_date
         st.write("DEBUG: start_date type:", type(start_date), "value:", start_date)
         st.write("DEBUG: end_date type:", type(end_date), "value:", end_date)
 
         timeline_df = avg_dbe[['Bulb Type', 'Recommended Removal Date']].dropna()
         timeline_df['Recommended Removal Date'] = pd.to_datetime(timeline_df['Recommended Removal Date'])
-
-        # Another debug line
         st.write("DEBUG: timeline_df head:", timeline_df.head())
 
         fig_calendar = px.scatter(
