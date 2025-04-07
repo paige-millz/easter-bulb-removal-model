@@ -167,56 +167,79 @@ if uploaded_file is not None:
                 st.info(f"Not enough data for the regression model in year {selected_reg_year}.")
         
         # --- Recommended Removal Dates Section ---
-        st.subheader("Recommended Removal Dates Based on Easter Date")
-        easter_year = st.number_input("Select Easter Year", value=2024, step=1)
-        computed_easter = compute_easter(int(easter_year))
-        easter_date = pd.to_datetime(computed_easter)
-        st.write("Computed Easter Date:", easter_date.strftime("%Y-%m-%d"))
-        
-        # Calculate historical average DBE per Bulb Type using filtered data
-        avg_dbe = df_all_filtered.groupby("Bulb Type")["DBE"].mean().reset_index().rename(columns={"DBE": "Avg DBE"})
-        
-        def safe_removal_date(dbe, easter):
-            try:
-                return easter - pd.Timedelta(days=int(round(float(dbe))))
-            except Exception:
-                return pd.NaT
-        
-        avg_dbe["Recommended Removal Date"] = avg_dbe["Avg DBE"].apply(lambda dbe: safe_removal_date(dbe, easter_date))
-        
-        if model_choice == "Overall" and not df_model.empty:
-            avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(
-                lambda dbe: model.intercept_ + model.coef_[0] * dbe if pd.notnull(dbe) else pd.NA)
-        elif model_choice == "By Year" and not df_year.empty:
-            avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(
-                lambda dbe: model_year.intercept_ + model_year.coef_[0] * dbe if pd.notnull(dbe) else pd.NA)
-        else:
-            avg_dbe["Predicted Avg Temp (°F)"] = pd.NA
-        
-        st.write("### Recommended Removal Dates and Expected Temperature")
-        st.dataframe(avg_dbe)
-        
-        st.markdown("""
-        **Explanation:**
-        - For each bulb type (excluding rows with unwanted notes), the app calculates the historical average DBE (Days Before Easter) at which bulbs were removed.
-        - The recommended removal date is computed by subtracting the average DBE from the computed Easter date.
-        - The regression model predicts the expected average temperature on that removal day.
-        """)
-        
-        # --- New Feature 1: Calendar View of Recommended Removal Dates ---
-        st.subheader("Calendar View of Recommended Removal Dates")
-        # Define a two-month window: 1 month before to 1 month after Easter
-        start_date = easter_date - pd.Timedelta(days=30)
-        end_date = easter_date + pd.Timedelta(days=30)
-        timeline_df = avg_dbe[['Bulb Type', 'Recommended Removal Date']].dropna()
-        timeline_df['Recommended Removal Date'] = pd.to_datetime(timeline_df['Recommended Removal Date'])
-        fig_calendar = px.scatter(timeline_df, x="Recommended Removal Date", y="Bulb Type",
-                                  title="Recommended Removal Dates Calendar View",
-                                  labels={"Recommended Removal Date": "Date", "Bulb Type": "Bulb Type"})
-        fig_calendar.add_vline(x=easter_date, line_width=2, line_dash="dash", line_color="red",
-                               annotation_text="Easter", annotation_position="top right")
-        fig_calendar.update_xaxes(range=[start_date, end_date], dtick="D1")
-        st.plotly_chart(fig_calendar)
+st.subheader("Recommended Removal Dates Based on Easter Date")
+easter_year = st.number_input("Select Easter Year", value=2024, step=1)
+computed_easter = compute_easter(int(easter_year))
+easter_date = pd.to_datetime(computed_easter)
+st.write("Computed Easter Date:", easter_date.strftime("%Y-%m-%d"))
+
+# Calculate historical average DBE per Bulb Type using filtered data
+avg_dbe = df_all_filtered.groupby("Bulb Type")["DBE"].mean().reset_index().rename(columns={"DBE": "Avg DBE"})
+
+# Ensure 'Avg DBE' is numeric
+avg_dbe["Avg DBE"] = pd.to_numeric(avg_dbe["Avg DBE"], errors='coerce')
+
+def safe_removal_date(dbe, easter):
+    """Return the removal date by subtracting dbe days from Easter.
+       If dbe is invalid or array-like, return NaT."""
+    if pd.isnull(dbe):
+        return pd.NaT
+    try:
+        # Round to nearest integer to avoid fractional days
+        d_int = int(round(dbe))
+        return easter - pd.Timedelta(days=d_int)
+    except:
+        return pd.NaT
+
+avg_dbe["Recommended Removal Date"] = avg_dbe["Avg DBE"].apply(lambda dbe: safe_removal_date(dbe, easter_date))
+
+if model_choice == "Overall" and not df_model.empty:
+    avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(
+        lambda dbe: model.intercept_ + model.coef_[0] * dbe if pd.notnull(dbe) else pd.NA
+    )
+elif model_choice == "By Year" and not df_year.empty:
+    avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(
+        lambda dbe: model_year.intercept_ + model_year.coef_[0] * dbe if pd.notnull(dbe) else pd.NA
+    )
+else:
+    avg_dbe["Predicted Avg Temp (°F)"] = pd.NA
+
+st.write("### Recommended Removal Dates and Expected Temperature")
+st.dataframe(avg_dbe)
+
+st.markdown("""
+**Explanation:**
+- For each bulb type (excluding rows with unwanted notes), the app calculates the historical average DBE (Days Before Easter).
+- The recommended removal date is computed by subtracting the average DBE from the computed Easter date.
+- The regression model predicts the expected average temperature on that removal day.
+""")
+
+# --- Calendar View of Recommended Removal Dates ---
+st.subheader("Calendar View of Recommended Removal Dates")
+start_date = easter_date - pd.Timedelta(days=30)
+end_date = easter_date + pd.Timedelta(days=30)
+
+timeline_df = avg_dbe[['Bulb Type', 'Recommended Removal Date']].dropna()
+timeline_df['Recommended Removal Date'] = pd.to_datetime(timeline_df['Recommended Removal Date'])
+
+fig_calendar = px.scatter(
+    timeline_df,
+    x="Recommended Removal Date",
+    y="Bulb Type",
+    title="Recommended Removal Dates Calendar View",
+    labels={"Recommended Removal Date": "Date", "Bulb Type": "Bulb Type"}
+)
+fig_calendar.add_vline(
+    x=easter_date,
+    line_width=2,
+    line_dash="dash",
+    line_color="red",
+    annotation_text="Easter",
+    annotation_position="top right"
+)
+fig_calendar.update_xaxes(range=[start_date, end_date], dtick="D1")
+
+st.plotly_chart(fig_calendar)
         
         # --- New Feature 2: Historical Trends by Bulb Type ---
         st.subheader("Historical Trends by Bulb Type")
