@@ -3,17 +3,35 @@ import pandas as pd
 import plotly.express as px
 from sklearn.linear_model import LinearRegression
 import numpy as np
-from datetime import timedelta
+from datetime import timedelta, date
 
 st.title("Easter Bulb Removal Model Dashboard")
 
 st.markdown("""
-This dashboard lets you upload your **Easter Rules Template_Bulb Removal Model(PM).xlsx** file, which contains historical data for 2023, 2024, and 2025.  
-It combines these sheets into one dataset, shows summary insights and visualizations, and then helps recommend optimal removal dates based on a user‐selected Easter date.
+This dashboard lets you upload your **Easter Rules Template_Bulb Removal Model(PM).xlsx** file containing historical data for 2023, 2024, and 2025.  
+It combines these sheets, displays summary insights and visualizations, and then recommends optimal removal dates based on a user‐selected Easter year.
 """)
 
 # File uploader widget
 uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
+
+# Function to compute Easter date using the Anonymous Gregorian algorithm
+def compute_easter(year):
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
 
 def load_year_data(xls, sheet_name, year):
     # Parse the specified sheet using row 1 as the header
@@ -26,7 +44,6 @@ def load_year_data(xls, sheet_name, year):
         'Average Temperature from Removal Date (°F)',
         'Growing Degree Days (#)'
     ]
-    
     # Check for missing columns and fill them in if needed
     for col in required_cols:
         if col not in df.columns:
@@ -34,7 +51,6 @@ def load_year_data(xls, sheet_name, year):
                 df[col] = 0
             else:
                 df[col] = pd.NA  # Fill missing columns with NA
-
     # Select only the required columns
     df = df[required_cols]
     # Add a column for the year
@@ -78,7 +94,7 @@ if uploaded_file is not None:
         
         # Visualizations
         st.subheader("Average DBE by Bulb Type")
-        fig1 = px.bar(summary, x="Bulb Type", y="DBE", 
+        fig1 = px.bar(summary, x="Bulb Type", y="DBE",
                       title="Average Days Before Easter (DBE) by Bulb Type")
         st.plotly_chart(fig1)
         
@@ -90,8 +106,6 @@ if uploaded_file is not None:
         
         # ----- Regression Model Section -----
         st.subheader("Regression Model: Predicting Average Temperature from DBE")
-        
-        # Prepare data for regression (drop missing values)
         df_model = df_all.dropna(subset=['DBE', 'Avg Temp (°F)']).copy()
         df_model['DBE'] = pd.to_numeric(df_model['DBE'], errors='coerce')
         df_model['Avg Temp (°F)'] = pd.to_numeric(df_model['Avg Temp (°F)'], errors='coerce')
@@ -107,9 +121,7 @@ if uploaded_file is not None:
             st.write("Intercept:", model.intercept_)
             st.write("Coefficient (slope):", model.coef_[0])
             
-            # Add predictions to the model DataFrame
             df_model['Predicted Avg Temp (°F)'] = model.predict(X)
-            
             fig3 = px.scatter(df_model, x="DBE", y="Avg Temp (°F)", color="Bulb Type",
                               hover_data=["Year", "Removal Date"],
                               title="DBE vs. Average Temperature with Regression Line")
@@ -122,17 +134,29 @@ if uploaded_file is not None:
         # ----- Recommendation Section -----
         st.subheader("Recommended Removal Dates Based on Easter Date")
         
-        # Let user input an Easter date
-        easter_date = st.date_input("Select Easter Date", value=pd.to_datetime("2024-03-31"))
+        # Let user input an Easter year and compute Easter automatically
+        easter_year = st.number_input("Select Easter Year", value=2024, step=1)
+        computed_easter = compute_easter(int(easter_year))
+        # Convert computed date to pandas Timestamp
+        easter_date = pd.to_datetime(computed_easter)
+        st.write("Computed Easter Date:", easter_date.strftime("%Y-%m-%d"))
         
         # Calculate the historical average DBE per Bulb Type from available data
         avg_dbe = df_all.groupby("Bulb Type")["DBE"].mean().reset_index().rename(columns={"DBE": "Avg DBE"})
+        
+        # Define a safe function to compute removal date
+        def safe_removal_date(dbe, easter):
+            if pd.isnull(dbe):
+                return pd.NaT
+            return easter - pd.Timedelta(days=float(dbe))
+        
         # Calculate recommended removal date per bulb type
-        avg_dbe["Recommended Removal Date"] = avg_dbe["Avg DBE"].apply(lambda dbe: easter_date - pd.Timedelta(days=dbe))
+        avg_dbe["Recommended Removal Date"] = avg_dbe["Avg DBE"].apply(lambda dbe: safe_removal_date(dbe, easter_date))
         
         # Use the regression model (if available) to predict the expected average temperature at that DBE
         if not df_model.empty:
-            avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(lambda dbe: model.intercept_ + model.coef_[0] * dbe)
+            avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(
+                lambda dbe: model.intercept_ + model.coef_[0] * dbe if pd.notnull(dbe) else pd.NA)
         else:
             avg_dbe["Predicted Avg Temp (°F)"] = pd.NA
         
@@ -142,8 +166,8 @@ if uploaded_file is not None:
         st.markdown("""
         **Explanation:**
         - For each bulb type, the app calculates the historical average DBE (Days Before Easter) at which bulbs were removed.
-        - The recommended removal date is then computed by subtracting the average DBE (in days) from the selected Easter date.
-        - Using a regression model built from historical data, the app also predicts the expected average temperature on the recommended removal day.
+        - The recommended removal date is computed by subtracting the average DBE from the computed Easter date.
+        - The regression model predicts the expected average temperature on that removal day.
         """)
         
     except Exception as e:
