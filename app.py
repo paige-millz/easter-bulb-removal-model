@@ -249,8 +249,8 @@ if uploaded_file is not None:
 
         try:
             # Define calendar range
-            start_date = easter_date - timedelta(days=30)
-            end_date = easter_date + timedelta(days=30)
+            start_date = pd.to_datetime(easter_date) - pd.Timedelta(days=30)
+            end_date = pd.to_datetime(easter_date) + pd.Timedelta(days=30)
 
             # Prepare the data
             timeline_df = avg_dbe[['Bulb Type', 'Recommended Removal Date']].dropna()
