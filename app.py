@@ -1,12 +1,15 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from sklearn.linear_model import LinearRegression
+import numpy as np
+from datetime import timedelta
 
 st.title("Easter Bulb Removal Model Dashboard")
 
 st.markdown("""
 This dashboard lets you upload your **Easter Rules Template_Bulb Removal Model(PM).xlsx** file, which contains historical data for 2023, 2024, and 2025.  
-The app will combine these sheets into one dataset and display summary insights and visualizations.
+It combines these sheets into one dataset, shows summary insights and visualizations, and then helps recommend optimal removal dates based on a user‐selected Easter date.
 """)
 
 # File uploader widget
@@ -24,13 +27,13 @@ def load_year_data(xls, sheet_name, year):
         'Growing Degree Days (#)'
     ]
     
-    # Check for missing columns and add them if needed
+    # Check for missing columns and fill them in if needed
     for col in required_cols:
         if col not in df.columns:
             if col == 'Growing Degree Days (#)':
                 df[col] = 0
             else:
-                df[col] = pd.NA  # Fill with NA for other missing columns
+                df[col] = pd.NA  # Fill missing columns with NA
 
     # Select only the required columns
     df = df[required_cols]
@@ -58,7 +61,7 @@ if uploaded_file is not None:
         # Combine data from all years
         df_all = pd.concat([df_2023, df_2024, df_2025], ignore_index=True)
         
-        st.subheader("Combined Data")
+        st.subheader("Combined Historical Data")
         st.dataframe(df_all)
         
         # Convert 'Removal Date' column to datetime
@@ -73,25 +76,76 @@ if uploaded_file is not None:
         }).reset_index()
         st.dataframe(summary)
         
-        # Bar chart: Average DBE by Bulb Type
+        # Visualizations
         st.subheader("Average DBE by Bulb Type")
         fig1 = px.bar(summary, x="Bulb Type", y="DBE", 
                       title="Average Days Before Easter (DBE) by Bulb Type")
         st.plotly_chart(fig1)
         
-        # Scatter plot: DBE vs. Average Temperature
         st.subheader("DBE vs. Average Temperature")
         fig2 = px.scatter(df_all, x="DBE", y="Avg Temp (°F)", color="Bulb Type",
                           hover_data=["Year", "Removal Date"],
                           title="Removal DBE vs. Average Temperature")
         st.plotly_chart(fig2)
         
+        # ----- Regression Model Section -----
+        st.subheader("Regression Model: Predicting Average Temperature from DBE")
+        
+        # Prepare data for regression (drop missing values)
+        df_model = df_all.dropna(subset=['DBE', 'Avg Temp (°F)']).copy()
+        df_model['DBE'] = pd.to_numeric(df_model['DBE'], errors='coerce')
+        df_model['Avg Temp (°F)'] = pd.to_numeric(df_model['Avg Temp (°F)'], errors='coerce')
+        df_model = df_model.dropna(subset=['DBE', 'Avg Temp (°F)'])
+        
+        if not df_model.empty:
+            X = df_model['DBE'].values.reshape(-1, 1)
+            y = df_model['Avg Temp (°F)'].values
+            model = LinearRegression()
+            model.fit(X, y)
+            
+            st.write("**Regression Model Results:**")
+            st.write("Intercept:", model.intercept_)
+            st.write("Coefficient (slope):", model.coef_[0])
+            
+            # Add predictions to the model DataFrame
+            df_model['Predicted Avg Temp (°F)'] = model.predict(X)
+            
+            fig3 = px.scatter(df_model, x="DBE", y="Avg Temp (°F)", color="Bulb Type",
+                              hover_data=["Year", "Removal Date"],
+                              title="DBE vs. Average Temperature with Regression Line")
+            fig3.add_scatter(x=df_model['DBE'], y=df_model['Predicted Avg Temp (°F)'],
+                             mode='lines', name='Regression Line')
+            st.plotly_chart(fig3)
+        else:
+            st.info("Not enough data to run the regression model.")
+        
+        # ----- Recommendation Section -----
+        st.subheader("Recommended Removal Dates Based on Easter Date")
+        
+        # Let user input an Easter date
+        easter_date = st.date_input("Select Easter Date", value=pd.to_datetime("2024-03-31"))
+        
+        # Calculate the historical average DBE per Bulb Type from available data
+        avg_dbe = df_all.groupby("Bulb Type")["DBE"].mean().reset_index().rename(columns={"DBE": "Avg DBE"})
+        # Calculate recommended removal date per bulb type
+        avg_dbe["Recommended Removal Date"] = avg_dbe["Avg DBE"].apply(lambda dbe: easter_date - pd.Timedelta(days=dbe))
+        
+        # Use the regression model (if available) to predict the expected average temperature at that DBE
+        if not df_model.empty:
+            avg_dbe["Predicted Avg Temp (°F)"] = avg_dbe["Avg DBE"].apply(lambda dbe: model.intercept_ + model.coef_[0] * dbe)
+        else:
+            avg_dbe["Predicted Avg Temp (°F)"] = pd.NA
+        
+        st.write("### Recommended Removal Dates and Expected Temperature")
+        st.dataframe(avg_dbe)
+        
         st.markdown("""
-        **Next Steps for the Model:**
-        - Compare historical yield outcomes (once available) against DBE and temperature data.
-        - Identify optimal removal DBE ranges per bulb type.
-        - Use a regression or rule-based model to suggest adjustments.
+        **Explanation:**
+        - For each bulb type, the app calculates the historical average DBE (Days Before Easter) at which bulbs were removed.
+        - The recommended removal date is then computed by subtracting the average DBE (in days) from the selected Easter date.
+        - Using a regression model built from historical data, the app also predicts the expected average temperature on the recommended removal day.
         """)
+        
     except Exception as e:
         st.error(f"Error processing file: {e}")
 else:
