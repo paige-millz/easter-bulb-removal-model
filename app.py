@@ -101,7 +101,7 @@ if uploaded_excel is not None:
             df_filtered = df_all
         fig2 = px.scatter(df_filtered, x="DBE", y="Avg Temp (°F)", color="Bulb Type",
                           hover_data=["Year", "Removal Date"],
-                          title="DBE vs. Average Temp")
+                          title="DBE vs. Avg Temp")
         st.plotly_chart(fig2)
         
         st.subheader("Regression Model: Predicting Avg Temp from DBE")
@@ -142,7 +142,7 @@ if uploaded_excel is not None:
             
             if not df_year.empty:
                 X = df_year['DBE'].values.reshape(-1, 1)
-                y = df_year['Avg Temp (°F)'].values
+                y = df_year['Avg Temp (°°F)'].values
                 model_year = LinearRegression()
                 model_year.fit(X, y)
                 
@@ -152,7 +152,8 @@ if uploaded_excel is not None:
                 
                 df_year['Predicted Avg Temp (°F)'] = model_year.predict(X)
                 fig4 = px.scatter(df_year, x="DBE", y="Avg Temp (°F)", color="Bulb Type",
-                                  hover_data=["Year", "Removal Date"], title=f"Regression Fit for {selected_reg_year}")
+                                  hover_data=["Year", "Removal Date"],
+                                  title=f"Regression Fit for {selected_reg_year}")
                 fig4.add_scatter(x=df_year['DBE'], y=df_year['Predicted Avg Temp (°F)'],
                                  mode='lines', name="Regression Line")
                 st.plotly_chart(fig4)
@@ -169,25 +170,32 @@ if uploaded_excel is not None:
             df_weather = pd.read_csv(weather_csv_path)
             if "datetime" in df_weather.columns:
                 df_weather["datetime"] = pd.to_datetime(df_weather["datetime"], errors="coerce")
+            
+            # --- Fix: If there's no 'TAVG' column, use 'temp' as the average temperature ---
+            if "TAVG" not in df_weather.columns:
+                if "temp" in df_weather.columns:
+                    df_weather["TAVG"] = df_weather["temp"]
+                else:
+                    st.warning("Neither 'TAVG' nor 'temp' found in weather data.")
+            
             st.write("### Weather Data Preview")
             st.dataframe(df_weather.head(20))
             
-            # Calculate Growing Degree Days (GDD) with base 40°F if 'TAVG' exists
+            # Calculate Growing Degree Days (GDD) with base 40°F
             base_temp = 40
             if "TAVG" in df_weather.columns:
                 df_weather["GDD"] = df_weather["TAVG"].apply(lambda t: max(t - base_temp, 0))
                 st.write("### Weather Data with GDD Calculation")
                 st.dataframe(df_weather[["datetime", "TAVG", "GDD"]].head(20))
             else:
-                st.info("No 'TAVG' column found in the weather data.")
+                st.info("No average temperature column available for GDD calculation.")
         except Exception as e:
             st.error(f"Error loading weather data: {e}")
         
         # ===================================================
-        # 3. Future Average Temperature Forecast
+        # 3. Predicted Future Average Temperature Forecast
         # ===================================================
         st.subheader("Predicted Future Average Temperature (Feb-Apr) by Year")
-        # Using the weather CSV data: group by year and compute average TAVG
         if "TAVG" in df_weather.columns:
             df_weather["Year"] = df_weather["datetime"].dt.year
             avg_temp_year = df_weather.groupby("Year")["TAVG"].mean().reset_index()
@@ -210,13 +218,12 @@ if uploaded_excel is not None:
             fig_future = px.scatter(avg_temp_year, x="Year", y="TAVG",
                                     title="Historical & Predicted Average Temperature (Feb-Apr)",
                                     labels={"TAVG": "Average Temperature (°F)"})
-            # Add regression line (covers both historical and future)
             all_years = pd.concat([avg_temp_year, future_df.rename(columns={"Predicted TAVG": "TAVG"})])
             all_years = all_years.sort_values("Year")
             fig_future.add_scatter(x=all_years["Year"], y=all_years["TAVG"], mode="lines", name="Trend")
             st.plotly_chart(fig_future)
         else:
-            st.info("Weather data does not include 'TAVG' column for average temperature.")
+            st.info("Weather data does not include an average temperature column ('TAVG' or 'temp').")
         
         # ===================================================
         # 4. Recommended Removal Dates & Predictions
@@ -259,7 +266,7 @@ if uploaded_excel is not None:
         **Explanation:**
         - For each bulb type (filtered for valid entries), the app computes the historical average DBE (Days Before Easter).
         - The recommended removal date is derived by subtracting that average DBE from the computed Easter date.
-        - The regression model (Overall or By Year) predicts the expected average temperature on that removal day.
+        - The regression model (Overall or By Year) is used to predict the expected average temperature on that removal day.
         - The forecast above shows the expected average temperature trends (Feb-Apr) driving these recommendations.
         """)
         
