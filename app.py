@@ -244,36 +244,57 @@ if uploaded_file is not None:
         - The regression model (overall or year-specific) predicts the expected average temperature on that removal day.
         """)
 
-        # === Visual Timeline (Gantt-Style) of Recommended Removal Dates ===
-        st.subheader("Visual Timeline of Recommended Removal Dates (Gantt-Style)")
+        # 7) New Visualization: Days From Easter
+        st.subheader("Recommended Removal Timing (Days From Easter)")
+        # Calculate the numeric offset (days) from Easter
+        avg_dbe["Days From Easter"] = (avg_dbe["Recommended Removal Date"] - easter_date).dt.days
 
-        timeline_df = avg_dbe[["Bulb Type", "Recommended Removal Date"]].dropna().copy()
-        timeline_df["Start"] = timeline_df["Recommended Removal Date"]
-        timeline_df["End"] = timeline_df["Recommended Removal Date"] + pd.Timedelta(days=1)
-
-        fig_timeline = px.timeline(
-            timeline_df,
-            x_start="Start",
-            x_end="End",
+        # Scatter plot version
+        fig_offset = px.scatter(
+            avg_dbe,
+            x="Days From Easter",
             y="Bulb Type",
             color="Bulb Type",
-            title="Recommended Removal Dates (Gantt-Style)"
+            title="Recommended Removal Timing (Days from Easter)",
+            labels={
+                "Days From Easter": "Days from Easter (negative = before Easter)",
+                "Bulb Type": "Bulb Type"
+            }
         )
-
-        # Reverse the Y-axis so the first Bulb Type appears at the top
-        fig_timeline.update_yaxes(autorange="reversed")
-
-        # Add a vertical line for Easter
-        fig_timeline.add_vline(
-            x=easter_date,
-            line_width=3,
+        # Add a vertical line at 0 (Easter)
+        fig_offset.add_vline(
+            x=0,
+            line_width=2,
             line_dash="dash",
             line_color="red",
             annotation_text="Easter",
             annotation_position="top right"
         )
+        st.plotly_chart(fig_offset)
 
-        st.plotly_chart(fig_timeline)
+        # Optional: Horizontal bar chart version
+        st.subheader("Removal Timing by Bulb Type (Horizontal Bar)")
+        fig_bars = px.bar(
+            avg_dbe,
+            x="Days From Easter",
+            y="Bulb Type",
+            orientation="h",
+            color="Bulb Type",
+            title="Recommended Removal Timing (Days from Easter)",
+            labels={
+                "Days From Easter": "Days from Easter (negative = before Easter)",
+                "Bulb Type": "Bulb Type"
+            }
+        )
+        fig_bars.add_vline(
+            x=0,
+            line_width=2,
+            line_dash="dash",
+            line_color="red",
+            annotation_text="Easter",
+            annotation_position="top right"
+        )
+        st.plotly_chart(fig_bars)
 
         # 8) Historical Trends by Bulb Type
         st.subheader("Historical Trends by Bulb Type")
