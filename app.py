@@ -245,7 +245,7 @@ if uploaded_file is not None:
         """)
 
         # 7) Calendar View of Recommended Removal Dates
-       st.subheader("Calendar View of Recommended Removal Dates")
+        st.subheader("Calendar View of Recommended Removal Dates")
 
         try:
             # Define calendar range
