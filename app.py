@@ -271,7 +271,8 @@ if uploaded_file is not None:
             annotation_text="Easter",
             annotation_position="top right"
         )
-        fig_calendar.update_xaxes(range=[start_date, end_date], dtick="D1")
+        # Use dtick in milliseconds (86400000 ms = 1 day)
+        fig_calendar.update_xaxes(range=[start_date, end_date], dtick=86400000)
         st.plotly_chart(fig_calendar)
 
         # 8) Historical Trends by Bulb Type
