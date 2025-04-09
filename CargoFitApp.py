@@ -14,7 +14,7 @@ st.markdown("Determine if cargo and mechanics fit into the selected aircraft bas
 # ---------------------------
 # LOAD DATA
 # ---------------------------
-# Use the raw GitHub URLs for the CSV files
+# These are your raw GitHub URLs.
 aircraft_url = "https://raw.githubusercontent.com/paige-millz/onfly-air-cargo-fit-tool/refs/heads/main/AC%20Specifications_Cargo%20Fit%20Tool%20App%20-%20AC%20Specs.csv"
 parts_url = "https://raw.githubusercontent.com/paige-millz/onfly-air-cargo-fit-tool/refs/heads/main/historical_parts_Cargo%20Fit%20Tool%20%20-%20historical_parts.csv"
 
@@ -37,8 +37,25 @@ def clean_aircraft(df):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
 
+# Load the aircraft and historical parts data
 df_aircraft = clean_aircraft(load_data(aircraft_url))
 df_parts = load_data(parts_url)
+
+# ---------------------------
+# DEBUGGING: Check Historical Parts Data
+# ---------------------------
+st.write("DEBUG: Historical Parts DataFrame Columns:", df_parts.columns.tolist())
+st.write("DEBUG: Historical Parts Data (first 10 rows):")
+st.write(df_parts.head(10))
+
+# Attempt to extract part names.
+# Adjust the column name below if your CSV uses a different header (e.g., "Part Name" instead of "Part")
+try:
+    part_names = df_parts["Part"].dropna().astype(str).unique().tolist()
+except KeyError:
+    st.error('The expected column "Part" does not exist in the historical parts CSV.')
+    part_names = []
+st.write("DEBUG: Available Part Names:", part_names)
 
 # ---------------------------
 # STEP 1: SELECT AIRCRAFT
@@ -64,9 +81,8 @@ if "parts_list" not in st.session_state:
     st.session_state.parts_list = []
 
 with st.form("add_part_form"):
-    part_names = df_parts["Part"].dropna().astype(str).unique().tolist()
+    # If your CSV column header for parts is not "Part", update the code below accordingly.
     part_name = st.selectbox("Choose Existing Part or Enter New Name", ["(New)"] + sorted(part_names))
-
     part_aircraft = st.selectbox("Select Aircraft for This Part", aircraft_options)
 
     if part_name == "(New)":
@@ -80,6 +96,7 @@ with st.form("add_part_form"):
         if not match.empty:
             record = match.iloc[0]
             part_name = record["Part"]
+            # Adjust these column names if your CSV headers differ.
             length, width, height, weight = record[["Length (in)", "Width (in)", "Height (in)", "Weight (lbs.)"]]
 
     rotate = st.checkbox("Rotate part for door/cabin check? (swap L/W)")
@@ -114,7 +131,9 @@ if st.session_state.parts_list:
 
 st.markdown("---")
 
-# STEP 3: Mechanics and Payload
+# ---------------------------
+# STEP 3: MECHANICS AND PAYLOAD
+# ---------------------------
 st.header("Step 3: Mechanics and Payload")
 mechanics = st.checkbox("Include mechanics in payload?")
 mech_count = st.number_input("Number of Mechanics", min_value=0, value=0) if mechanics else 0
@@ -123,7 +142,9 @@ tool_weight = st.number_input("Total Tool Weight (lbs)", min_value=0.0) if mecha
 seat_removed = st.checkbox("Remove a seat?")
 seat_weight = aircraft_data["Seat Weight (lbs)"] if seat_removed else 0
 
-# STEP 4: Feasibility Calculations
+# ---------------------------
+# STEP 4: FEASIBILITY CALCULATIONS
+# ---------------------------
 st.header("Step 4: Feasibility Check")
 total_part_weight = sum(p["Weight"] for p in st.session_state.parts_list)
 total_weight = total_part_weight + mech_count * mech_weight + tool_weight
@@ -136,7 +157,9 @@ if total_weight <= available_payload:
 else:
     st.error("❌ Over max payload")
 
-# STEP 5: Door & Cabin Fit Checks
+# ---------------------------
+# STEP 5: DOOR & CABIN FIT CHECKS
+# ---------------------------
 st.header("Step 5: Door & Cabin Fit Checks")
 door_w, door_h = aircraft_data['Door Width (in)'], aircraft_data['Door Height (in)']
 cabin_l, cabin_w, cabin_h = aircraft_data['Cabin Length (in)'], aircraft_data['Cabin Width (in)'], aircraft_data['Cabin Height (in)']
@@ -148,7 +171,9 @@ for part in st.session_state.parts_list:
     st.success("✅ Fits through door") if fits_door else st.error("❌ Too big for door")
     st.success("✅ Fits in cabin") if fits_cabin else st.error("❌ Too big for cabin")
 
-# STEP 6: Visualization
+# ---------------------------
+# STEP 6: VISUALIZATION
+# ---------------------------
 st.header("Step 6: Visualization")
 if st.session_state.parts_list:
     selected_visual = st.selectbox("Select part to visualize against door", [p["Name"] for p in st.session_state.parts_list])
